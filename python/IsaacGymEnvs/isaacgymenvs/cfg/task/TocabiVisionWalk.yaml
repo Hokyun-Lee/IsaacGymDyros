@@ -22,7 +22,7 @@ env:
   NumHis : 10
   NumSkip : 2
 
-  initialHieght: 0.96
+  initialHieght: 0.94
 
 
   # cost parameters
@@ -44,25 +44,27 @@ env:
     heightMeasurementNoise: 0.06
 
     ## TASK ##
-    QPosMimicReward : 0.6
-    BodyVelocityReward : 0.45
-    ForceRefReward : 0.1
+    QPosMimicReward : 0.3
+    BodyVelocityReward : 0.3
+    ForceRefReward : 0.0
+    FootEdgeReward : -10.0
+    # FootEdgeReward : -0.0
 
     ## FOOTCONTACT ##
     FootContactReward : 0.2
 
     ## CONTACT FORCE PENALTIES ##
-    ContactForceThresholdPenalty : -1.5
-    ForceThresholdPenalty : -0.2
-    ForceDiffThresholdPenalty : -0.05
+    ContactForceThresholdPenalty : -0.0
+    ForceThresholdPenalty : -0.0
+    ForceDiffThresholdPenalty : -0.00
 
     ## REGULARIZATION ##
-    MimicBodyOrientationReward : 0.15
-    QVelRegulationReward : 0.1
-    QAccRegulationReward : 0.05
-    TorqueRegulationReward : 0.05
-    TorqueDiffRegulationReward : 0.6
-    ContactForceDiffRegulationReward : 0.2
+    MimicBodyOrientationReward : 0.00
+    QVelRegulationReward : 0.0
+    QAccRegulationReward : 0.00
+    TorqueRegulationReward : 0.00
+    TorqueDiffRegulationReward : 0.0
+    ContactForceDiffRegulationReward : 0.0
     DoubleSupportDiffRegulationReward : 0.0
 
 sim:

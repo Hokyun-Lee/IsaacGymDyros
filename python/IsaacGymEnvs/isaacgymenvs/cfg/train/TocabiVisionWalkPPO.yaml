@@ -76,8 +76,8 @@ params:
     lr_schedule: linear # could be adaptive, linear, constant # DH: should be linear
     kl_threshold: 0.008
     score_to_win: 20000
-    # max_epochs: ${resolve_default:5000,${....max_iterations}}   # DH: u may play with this # GENE: 80000000 / 16384 * 2
-    max_epochs: 10000   # DH: u may play with this # GENE: 80000000 / 16384 * 2
+    max_epochs: ${resolve_default:5000,${....max_iterations}}   # DH: u may play with this # GENE: 80000000 / 16384 * 2
+    # max_epochs: 10000   # DH: u may play with this # GENE: 80000000 / 16384 * 2
     save_best_after: 200
     save_frequency: 100
     print_stats: True
@@ -97,6 +97,6 @@ params:
     #wandb
     wandb_activate: True # True, False
     log_wandb_frequency: 10
-    num_rewards: 14 #Modify with individual tasks 
+    num_rewards: 15 #Modify with individual tasks 
     num_extra_logging: 1
     separate_opt: True #True only when trying to study with separate actor/critic

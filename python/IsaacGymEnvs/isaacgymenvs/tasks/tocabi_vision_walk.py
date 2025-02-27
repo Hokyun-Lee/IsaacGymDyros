@@ -20,6 +20,8 @@ from .base.vec_task import VecTask
 from isaacgymenvs.cfg.terrain.terrain_cfg import TerrainCfg
 from isaacgymenvs.utils.terrain import Terrain
 
+import matplotlib.pyplot as plt
+
 
 class TocabiVisionWalk(VecTask):
 
@@ -69,7 +71,8 @@ class TocabiVisionWalk(VecTask):
         self.rew_weights["FootContactReward"] = self.cfg["env"]["learn"]["FootContactReward"]
         self.rew_weights["ContactForceThresholdPenalty"] = self.cfg["env"]["learn"]["ContactForceThresholdPenalty"]
         self.rew_weights["ForceThresholdPenalty"] = self.cfg["env"]["learn"]["ForceThresholdPenalty"]
-        self.rew_weights["ForceDiffThresholdPenalty"] = self.cfg["env"]["learn"]["ForceDiffThresholdPenalty"]   
+        self.rew_weights["ForceDiffThresholdPenalty"] = self.cfg["env"]["learn"]["ForceDiffThresholdPenalty"]
+        self.rew_weights["FootEdgeReward"] = self.cfg["env"]["learn"]["FootEdgeReward"]
 
 
         super().__init__(config=self.cfg, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless)
@@ -97,7 +100,7 @@ class TocabiVisionWalk(VecTask):
         actor_root_state = self.gym.acquire_actor_root_state_tensor(self.sim)
         dof_state_tensor = self.gym.acquire_dof_state_tensor(self.sim)
         net_contact_forces = self.gym.acquire_net_contact_force_tensor(self.sim)
-        # body_state = self.gym.acquire_rigid_body_state_tensor(self.sim)
+        body_state = self.gym.acquire_rigid_body_state_tensor(self.sim)
         # sensor_tensor = self.gym.acquire_force_sensor_tensor(self.sim)
         # sensors_per_env = 2
 
@@ -106,10 +109,10 @@ class TocabiVisionWalk(VecTask):
         self.gym.refresh_dof_state_tensor(self.sim)
         self.gym.refresh_actor_root_state_tensor(self.sim)
         self.gym.refresh_net_contact_force_tensor(self.sim)
-        # self.gym.refresh_rigid_body_state_tensor(self.sim)
+        self.gym.refresh_rigid_body_state_tensor(self.sim)
 
         self.root_states = gymtorch.wrap_tensor(actor_root_state)
-        # self.body_states = gymtorch.wrap_tensor(body_state).view(self.num_envs, -1, 13)
+        self.body_states = gymtorch.wrap_tensor(body_state).view(self.num_envs, -1, 13)
         
         # create some wrapper tensors for different slices
         self.dof_state = gymtorch.wrap_tensor(dof_state_tensor)
@@ -342,6 +345,33 @@ class TocabiVisionWalk(VecTask):
         tm_params.restitution = self.terrain_cfg.restitution
         self.gym.add_triangle_mesh(self.sim, self.terrain.vertices.flatten(order='C'), self.terrain.triangles.flatten(order='C'), tm_params)   
         self.height_samples = torch.tensor(self.terrain.heightsamples).view(self.terrain.tot_rows, self.terrain.tot_cols).to(self.device)
+        self.x_edge_mask = torch.tensor(self.terrain.x_edge_mask).view(self.terrain.tot_rows, self.terrain.tot_cols).to(self.device)
+        print("x_edge_mask created!")
+
+        # plt.imshow(self.x_edge_mask.detach().cpu().numpy(), cmap='gray')
+        # plt.colorbar(label="Edge Mask (1=True, 0=False)")
+        # plt.title("x_edge_mask Visualization")
+        # plt.savefig("x_edge_mask_visualization.png", format="png")
+        # plt.close()
+        # 고해상도 설정
+        plt.figure(figsize=(15, 10))
+
+        # 컬러맵을 'hot'으로 설정하여 대비를 높임
+        plt.imshow(self.x_edge_mask.detach().cpu().numpy(), cmap='gray')
+
+        # # # 세부 조정: 특정 범위 확대(필요 시 조정)
+        # plt.xlim(400, 600)  # x 범위를 세부적으로 조정
+        # plt.ylim(400, 600)   # y 범위를 세부적으로 조정
+
+        plt.xticks(range(0, self.x_edge_mask.shape[1], 100))  # x축 눈금을 픽셀 간격으로
+        plt.yticks(range(0, self.x_edge_mask.shape[0], 100))  # y축 눈금을 픽셀 간격으로
+
+        # 타이틀과 컬러바 추가
+        plt.title("x_edge_mask Visualization (White=True, Black=False)")
+
+        # 이미지 저장
+        plt.savefig("x_edge_mask_visualization_detailed.png", format="png", dpi=600)  # 고해상도 저장을 위해 dpi=300 사용
+        plt.close()
 
     def _create_envs(self, num_envs, spacing, num_per_row):
         lower = gymapi.Vec3(-spacing, -spacing, 0.0)
@@ -485,7 +515,12 @@ class TocabiVisionWalk(VecTask):
             self.total_mass,
             self.contact_reward_sum,
             self.right_foot_idx,
-            self.left_foot_idx
+            self.left_foot_idx,
+            self.body_states,
+            self.terrain_cfg.border_size,
+            self.terrain_cfg.horizontal_scale,
+            self.x_edge_mask,
+            self.terrain_levels
         )
         reward = torch.cat([reward, self.perturb_start], 1)
 
@@ -506,7 +541,7 @@ class TocabiVisionWalk(VecTask):
         self.gym.refresh_dof_state_tensor(self.sim)
         self.gym.refresh_actor_root_state_tensor(self.sim)
         self.gym.refresh_net_contact_force_tensor(self.sim)
-        # self.gym.refresh_rigid_body_state_tensor(self.sim)
+        self.gym.refresh_rigid_body_state_tensor(self.sim)
         # self.gym.refresh_force_sensor_tensor(self.sim)
 
         self.measured_heights = self.get_heights()
@@ -626,7 +661,7 @@ class TocabiVisionWalk(VecTask):
         self.gym.refresh_dof_state_tensor(self.sim)
         self.gym.refresh_actor_root_state_tensor(self.sim)
         self.gym.refresh_net_contact_force_tensor(self.sim)
-        # self.gym.refresh_rigid_body_state_tensor(self.sim)
+        self.gym.refresh_rigid_body_state_tensor(self.sim)
 
         self.check_termination()
         self.compute_reward()
@@ -686,6 +721,10 @@ class TocabiVisionWalk(VecTask):
         quat_error = quat_diff_rad(identity_rot, torso_rot)
         orientation_env_idx = torch.abs(quat_error) > 0.5
         collision_true = torch.any(torch.norm(self.contact_forces[:, self.non_feet_idxs, :], dim=2) > 1., dim=1)
+        # if orientation_env_idx[0]:
+        #     print("orientation_env_idx[0] :", orientation_env_idx[0])
+        # if collision_true[0]:
+        #     print("collision_true[0] :", collision_true[0])
 
         reset = torch.where(orientation_env_idx, torch.ones_like(self.reset_buf), torch.zeros_like(self.reset_buf))
         # reset = torch.where(pelvis_height_env_idx, torch.ones_like(self.reset_buf), reset)
@@ -903,6 +942,9 @@ class TocabiVisionWalk(VecTask):
 ###=========================jit functions=========================###
 #####################################################################
 
+
+
+
 @torch.jit.script
 def compute_humanoid_walk_reward(
     rew_weights,
@@ -928,9 +970,14 @@ def compute_humanoid_walk_reward(
     total_mass,
     contact_reward_sum,
     right_foot_idx,
-    left_foot_idx
+    left_foot_idx,
+    body_states,
+    border_size,
+    horizontal_scale,
+    x_edge_mask,
+    terrain_levels
 ):
-    # type: (Dict[str, float], Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, List[int], Tensor, Tensor, Tensor, float, float, float, Tensor, Tensor, int, int) -> Tuple[Tensor, Tensor, List[str], Tensor]
+    # type: (Dict[str, float], Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, List[int], Tensor, Tensor, Tensor, float, float, float, Tensor, Tensor, int, int, Tensor, float, float, Tensor, Tensor) -> Tuple[Tensor, Tensor, List[str], Tensor]
     
     #return angle difference between body(root link) quat & target quat (0,0,0,1)
     torso_rot = root_pose_states[:,3:7]
@@ -942,7 +989,6 @@ def compute_humanoid_walk_reward(
     qpos_regulation = rew_weights["QPosMimicReward"] * torch.exp(-2.0 * torch.norm((joint_position_target[:,0:] - joint_position_states[:,0:]), dim=1)**2)
     #calculate difference between initial q_vel, and q_vel now
     qvel_regulation = rew_weights["QVelRegulationReward"] * torch.exp(-0.01 * torch.norm((joint_velocity_init[:,0:] - joint_velocity_states[:,0:]), dim=1)**2)
-    # qvel_regulation = rew_weights["QVelRegulationReward"] * torch.exp(-0.1 * torch.norm((joint_velocity_init[:,0:] - joint_velocity_states[:,0:]), dim=1)**2)
     #penalize contact force & difference
     
     #1. Method (by sensor -> doesnt works well)
@@ -964,14 +1010,11 @@ def compute_humanoid_walk_reward(
     contact_force_diff_regulation = rew_weights["ContactForceDiffRegulationReward"] * torch.exp(-0.01*policy_freq_scale*(torch.norm(lfoot_force[:]-lfoot_force_pre[:], dim=1) + \
                                                             torch.norm(rfoot_force[:]-rfoot_force_pre[:], dim=1)))
     #calculate torque input cost
-    # torque_regulation = rew_weights["TorqueRegulationReward"] * torch.exp(-0.01 * torch.norm((actions[:,0:-1])*333,dim=1))
-    torque_regulation = rew_weights["TorqueRegulationReward"] * torch.exp(-0.008 * torch.norm((actions[:,0:-1])*333,dim=1))
+    torque_regulation = rew_weights["TorqueRegulationReward"] * torch.exp(-0.01 * torch.norm((actions[:,0:-1])*333,dim=1))
     #penalize difference of torque values
-    # torque_diff_regulation = rew_weights["TorqueDiffRegulationReward"] * torch.exp(-0.01*policy_freq_scale * torch.norm((actions[:,0:-1]-actions_pre[:,0:-1])*333, dim=1))
-    torque_diff_regulation = rew_weights["TorqueDiffRegulationReward"] * torch.exp(-0.008*policy_freq_scale * torch.norm((actions[:,0:-1]-actions_pre[:,0:-1])*333, dim=1))
+    torque_diff_regulation = rew_weights["TorqueDiffRegulationReward"] * torch.exp(-0.01*policy_freq_scale * torch.norm((actions[:,0:-1]-actions_pre[:,0:-1])*333, dim=1))
     #penalize difference of dof_velocities
-    # qacc_regulation = rew_weights["QAccRegulationReward"] * torch.exp(-20.0*torch.norm((joint_velocity_states[:,0:]-pre_joint_velocity_states[:,0:]), dim=1)**2)
-    qacc_regulation = rew_weights["QAccRegulationReward"] * torch.exp(-16.0*torch.norm((joint_velocity_states[:,0:]-pre_joint_velocity_states[:,0:]), dim=1)**2)
+    qacc_regulation = rew_weights["QAccRegulationReward"] * torch.exp(-20.0*torch.norm((joint_velocity_states[:,0:]-pre_joint_velocity_states[:,0:]), dim=1)**2)
     #track body velocity difference between target & state
     body_vel_reward = rew_weights["BodyVelocityReward"] * torch.exp(-3.0 * torch.norm((target_vel[:,0:] - root_pose_states[:,7:9]), dim=1)**2)
     #compare & track if foot contact phase synchronizes with refrence motion
@@ -992,8 +1035,7 @@ def compute_humanoid_walk_reward(
     RSSP_sync = RSSP & right_foot_contact & ~left_foot_contact
     LSSP_sync = LSSP & ~right_foot_contact & left_foot_contact
     foot_contact_reward = torch.zeros_like(mimic_body_orientation_reward, dtype=torch.float)
-
-    foot_contact_feeder = rew_weights["FootContactReward"]*torch.ones_like(foot_contact_reward, dtype=torch.float)
+    foot_contact_feeder = rew_weights["FootContactReward"] * torch.ones_like(foot_contact_reward, dtype=torch.float)
     foot_contact_reward = torch.where(DSP_sync.squeeze(-1), foot_contact_feeder, foot_contact_reward)
     foot_contact_reward = torch.where(RSSP_sync.squeeze(-1), foot_contact_feeder, foot_contact_reward)
     foot_contact_reward = torch.where(LSSP_sync.squeeze(-1), foot_contact_feeder, foot_contact_reward)
@@ -1005,19 +1047,19 @@ def compute_humanoid_walk_reward(
     left_foot_thres = lfoot_force[:,2].unsqueeze(-1) > 1.4*9.81*total_mass
     right_foot_thres = rfoot_force[:,2].unsqueeze(-1) > 1.4*9.81*total_mass
     thres = left_foot_thres | right_foot_thres
-    # force_thres_penalty = torch.where(thres.squeeze(-1), -0.2*ones[:], zeros[:])
-    force_thres_penalty = torch.where(thres.squeeze(-1), rew_weights["ForceThresholdPenalty"]*ones[:], zeros[:])
+    force_thres_penalty = torch.where(thres.squeeze(-1), rew_weights["ForceThresholdPenalty"] * ones[:], zeros[:])
 
-    contact_force_penalty_thres = rew_weights["ContactForceThresholdPenalty"]*(1-torch.exp(-0.007*(torch.norm(torch.clamp(lfoot_force[:,2].unsqueeze(-1) - 1.4*9.81*total_mass, min=0.0), dim=1) \
+    contact_force_penalty_thres = rew_weights["ContactForceThresholdPenalty"] * (1-torch.exp(-0.0007*(torch.norm(torch.clamp(lfoot_force[:,2].unsqueeze(-1) - 1.4*9.81*total_mass, min=0.0), dim=1) \
                                                             + torch.norm(torch.clamp(rfoot_force[:,2].unsqueeze(-1) - 1.4*9.81*total_mass, min=0.0), dim=1))))
-    contact_force_penalty = torch.where(thres.squeeze(-1), contact_force_penalty_thres[:], rew_weights["ContactForceThresholdPenalty"]*ones[:])
+    contact_force_penalty = torch.where(thres.squeeze(-1), contact_force_penalty_thres[:], zeros[:])
         
     left_foot_thres_diff = torch.abs(lfoot_force[:,2]-lfoot_force_pre[:,2]).unsqueeze(-1) > 0.2*9.81*total_mass/policy_freq_scale
     right_foot_thres_diff = torch.abs(rfoot_force[:,2]-rfoot_force_pre[:,2]).unsqueeze(-1) > 0.2*9.81*total_mass/policy_freq_scale
-    thres_diff = left_foot_thres_diff | right_foot_thres_diff  
-    force_diff_thres_penalty = torch.where(thres_diff.squeeze(-1), rew_weights["ForceDiffThresholdPenalty"]*ones[:], zeros[:])    
+    thres_diff = left_foot_thres_diff | right_foot_thres_diff
+    force_diff_thres_penalty = torch.where(thres_diff.squeeze(-1), rew_weights["ForceDiffThresholdPenalty"]*ones[:], zeros[:])
 
-    #Ignoring regulation terms
+
+    # Ignoring regulation terms
     # qacc_regulation *= 0
     # qvel_regulation *= 0
     # torque_regulation *= 0
@@ -1026,21 +1068,92 @@ def compute_humanoid_walk_reward(
     # contact_force_diff_regulation *= 0
     # contact_force_penalty *= 0
     weight_scale = total_mass / 104.48
-    force_ref_reward = rew_weights["ForceRefReward"]*torch.exp(-0.001*(torch.abs(lfoot_force[:,2]+weight_scale.squeeze(-1)*force_target[:,0]))) +\
-                        rew_weights["ForceRefReward"]*torch.exp(-0.001*(torch.abs(rfoot_force[:,2]+weight_scale.squeeze(-1)*force_target[:,1])))
+    force_ref_reward = rew_weights["ForceRefReward"] * (torch.exp(-0.001*(torch.abs(lfoot_force[:,2]+weight_scale.squeeze(-1)*force_target[:,0]))) +\
+                        torch.exp(-0.001*(torch.abs(rfoot_force[:,2]+weight_scale.squeeze(-1)*force_target[:,1]))))
+    
+    # feet_pos_xy = ((self.rigid_body_states[:, self.feet_indices, :2] + self.terrain.cfg.border_size) / self.cfg.terrain.horizontal_scale).round().long()  # (num_envs, 4, 2)
+    # feet_pos_xy[..., 0] = torch.clip(feet_pos_xy[..., 0], 0, self.x_edge_mask.shape[0]-1)
+    # feet_pos_xy[..., 1] = torch.clip(feet_pos_xy[..., 1], 0, self.x_edge_mask.shape[1]-1)
+    # feet_at_edge = self.x_edge_mask[feet_pos_xy[..., 0], feet_pos_xy[..., 1]]
 
+    # self.feet_at_edge = self.contact_filt & feet_at_edge
+    # feet_edge = (self.terrain_levels > 3) * torch.sum(self.feet_at_edge, dim=-1)
 
-    names = ["mimic_body_orientation_reward", "qpos_regulation", "qvel_regulation",\
+    right_foot_pos = body_states[:, right_foot_idx, :2]
+    left_foot_pos = body_states[:, left_foot_idx, :2]
+
+    # print("right_foot_pos[0]:", right_foot_pos[0])
+    # print("left_foot_pos[0]:", left_foot_pos[0])
+
+    # foot_pos = torch.zeros_like(right_foot_pos)
+    foot_pos = right_foot_pos
+    # print("RSSP_sync shape:", RSSP_sync.shape)
+    # print("right_foot_pos shape:", right_foot_pos.shape)
+    # print("foot_pos shape:", foot_pos.shape)
+    # print("LSSP_sync shape:", LSSP_sync.shape)
+    # print("left_foot_pos shape:", left_foot_pos.shape)
+    foot_pos = torch.where(RSSP_sync.expand(-1, 2), right_foot_pos, foot_pos)
+    foot_pos = torch.where(LSSP_sync.expand(-1, 2), left_foot_pos, foot_pos)
+
+    # print("foot_pos:", foot_pos)  # 발 위치 좌표 확인
+    
+
+    foot_pos_xy = ((foot_pos + border_size) / horizontal_scale).round().long()  # (num_envs, 2)
+    # print("foot_pos_xy:", foot_pos_xy)  # 발 위치 좌표 확인
+
+    foot_pos_xy[..., 0] = torch.clip(foot_pos_xy[..., 0], 0, x_edge_mask.shape[0]-1)
+    foot_pos_xy[..., 1] = torch.clip(foot_pos_xy[..., 1], 0, x_edge_mask.shape[1]-1)
+
+    # print("x_edge_mask.shape :", x_edge_mask.shape)
+    # print("x_edge_mask.shape[0]-1 :", x_edge_mask.shape[0]-1)
+    # print("x_edge_mask.shape[1]-1 :", x_edge_mask.shape[1]-1)
+    # print("x_edge_mask :", x_edge_mask)
+    # print("torch.sum(x_edge_mask) :", torch.sum(x_edge_mask)))
+
+    foot_at_edge = x_edge_mask[foot_pos_xy[..., 0], foot_pos_xy[..., 1]]
+    
+    # indices = torch.nonzero(foot_at_edge)
+    # print("Indices where foot_at_edge is 1:", indices.flatten())
+    
+    # print("foot_pose_xy[0]:", foot_pos_xy[0])
+    # print("foot_pos_xy[0, 0]", foot_pos_xy[0, 0])
+    # print("foot_pos_xy[0, 1]", foot_pos_xy[0, 1])
+    # print("foot_at_edge:", foot_at_edge)
+
+    # print("foot_pos_xy:", foot_pos_xy)  # 발 위치 좌표 확인
+    # print("x_edge_mask at foot_pos_xy:", x_edge_mask[foot_pos_xy[..., 0], foot_pos_xy[..., 1]])  # 각 좌표의 가장자리 여부 확인
+    # print("torch.sum(x_edge_mask[foot_pos_xy[..., 0], foot_pos_xy[..., 1]]) :", torch.sum(x_edge_mask[foot_pos_xy[..., 0], foot_pos_xy[..., 1]])) 
+
+    # foot_at_edge = torch.logical_or(RSSP, LSSP) & foot_at_edge
+    # foot_at_edge = ((rfoot_force[:, 2].unsqueeze(-1) > 1.0) | (lfoot_force[:, 2].unsqueeze(-1) > 1.0)) & foot_at_edge
+
+    # print("foot_at_edge : ", foot_at_edge[0, :])
+    # print("torch.sum(foot_at_edge * (terrain_levels > 3).float().unsqueeze(-1), dim=-1) :", torch.sum(foot_at_edge * (terrain_levels > 3).float().unsqueeze(-1), dim=-1))
+
+    # print("torch.logical_or(RSSP, LSSP): ", torch.logical_or(RSSP, LSSP))
+    # print("foot_at_edge : ", foot_at_edge)
+    foot_edge_reward = rew_weights["FootEdgeReward"] * foot_at_edge * (terrain_levels > 3).float()
+    
+    # print("terrain_levels : ", terrain_levels[0])
+    # print("foot_at_edge : ", foot_at_edge[0])
+    # print("foot_edge_reward : ", foot_edge_reward)
+    # print("torch.sum(foot_edge_reward) :", torch.sum(foot_edge_reward))
+    # print("torch.sum(body_vel_reward) :", torch.sum(body_vel_reward))
+    # print("torch.mean(foot_edge_reward) :", torch.mean(foot_edge_reward))
+    # print("torch.mean(body_vel_reward) :", torch.mean(body_vel_reward))
+    # print("body_vel_reward : ", body_vel_reward)
+
+    names = ["foot_edge_reward", "mimic_body_orientation_reward", "qpos_regulation", "qvel_regulation",\
         "contact_force_penalty", "torque_regulation", "torque_diff_regulation", "body_vel_reward",\
             "qacc_regulation", "foot_contact_reward", "contact_force_diff_regulation",\
                 "double_support_force_diff_regulation","force_thres_penalty","force_diff_thres_penalty", "force_ref_reward"]
     
-    reward = torch.stack([mimic_body_orientation_reward, qpos_regulation,qvel_regulation,\
+    reward = torch.stack([foot_edge_reward, mimic_body_orientation_reward, qpos_regulation,qvel_regulation,\
         contact_force_penalty, torque_regulation, torque_diff_regulation, body_vel_reward,\
            qacc_regulation, foot_contact_reward, contact_force_diff_regulation,\
             double_support_force_diff_regulation, force_thres_penalty, force_diff_thres_penalty, force_ref_reward],1)
 
-    total_reward = mimic_body_orientation_reward + qpos_regulation + qvel_regulation + contact_force_penalty + \
+    total_reward = foot_edge_reward + mimic_body_orientation_reward + qpos_regulation + qvel_regulation + contact_force_penalty + \
         torque_regulation + torque_diff_regulation + body_vel_reward + qacc_regulation + foot_contact_reward + \
         contact_force_diff_regulation + double_support_force_diff_regulation + force_thres_penalty + force_diff_thres_penalty + force_ref_reward
 

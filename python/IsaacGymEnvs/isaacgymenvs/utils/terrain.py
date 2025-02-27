@@ -39,6 +39,7 @@ class Terrain:
     def __init__(self, cfg: TerrainCfg, num_robots) -> None:
 
         self.cfg = cfg
+        self.border_size = cfg.border_size
         self.num_robots = num_robots
         self.type = cfg.mesh_type
         if self.type in ["none", 'plane']:

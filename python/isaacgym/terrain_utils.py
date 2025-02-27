@@ -347,7 +347,7 @@ def convert_heightfield_to_trimesh(height_field_raw, horizontal_scale, vertical_
         triangles[start+1:stop:2, 1] = ind2
         triangles[start+1:stop:2, 2] = ind3
 
-    return vertices, triangles
+    return vertices, triangles, move_x != 0
 
 
 class SubTerrain:

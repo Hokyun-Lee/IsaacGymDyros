@@ -834,7 +834,7 @@ def compute_humanoid_walk_reward(
     quat_error = quat_diff_rad(identity_rot, torso_rot) #quat_error = normalize_angle(quat_error)
     mimic_body_orientation_reward = 0.3 * torch.exp(-13.2 * torch.abs(quat_error)) 
     #calculate joint position & velocity & regulate with target
-    qpos_regulation = 0.35 * torch.exp(-2.0 * torch.norm((joint_position_target[:,0:] - joint_position_states[:,0:]), dim=1)**2)
+    qpos_regulation = 0.00 * torch.exp(-2.0 * torch.norm((joint_position_target[:,0:] - joint_position_states[:,0:]), dim=1)**2)
     #calculate difference between initial q_vel, and q_vel now
     qvel_regulation = 0.05 * torch.exp(-0.01 * torch.norm((joint_velocity_init[:,0:] - joint_velocity_states[:,0:]), dim=1)**2)
     #penalize contact force & difference
@@ -868,6 +868,9 @@ def compute_humanoid_walk_reward(
     #compare & track if foot contact phase synchronizes with refrence motion
     left_foot_contact = (lfoot_force[:,2].unsqueeze(-1) > 1.)
     right_foot_contact = (rfoot_force[:,2].unsqueeze(-1) > 1.)
+
+    # lin_vel_z_penalty = -0.3*torch.exp(-5.0 * torch.square(root_pose_states[:,9]))
+    lin_vel_z_penalty = -1.0 * torch.square(root_pose_states[:,9])
   
     
     ones = torch.ones_like(body_vel_reward)
@@ -919,17 +922,17 @@ def compute_humanoid_walk_reward(
                         0.1*torch.exp(-0.001*(torch.abs(rfoot_force[:,2]+weight_scale.squeeze(-1)*force_target[:,1])))
 
 
-    names = ["mimic_body_orientation_reward", "qpos_regulation", "qvel_regulation",\
+    names = ["lin_vel_z_penalty", "mimic_body_orientation_reward", "qpos_regulation", "qvel_regulation",\
         "contact_force_penalty", "torque_regulation", "torque_diff_regulation", "body_vel_reward",\
             "qacc_regulation", "foot_contact_reward", "contact_force_diff_regulation",\
                 "double_support_force_diff_regulation","force_thres_penalty","force_diff_thres_penalty", "force_ref_reward"]
     
-    reward = torch.stack([mimic_body_orientation_reward, qpos_regulation,qvel_regulation,\
+    reward = torch.stack([lin_vel_z_penalty, mimic_body_orientation_reward, qpos_regulation,qvel_regulation,\
         contact_force_penalty, torque_regulation, torque_diff_regulation, body_vel_reward,\
            qacc_regulation, foot_contact_reward, contact_force_diff_regulation,\
             double_support_force_diff_regulation, force_thres_penalty, force_diff_thres_penalty, force_ref_reward],1)
 
-    total_reward = mimic_body_orientation_reward + qpos_regulation + qvel_regulation + contact_force_penalty + \
+    total_reward = lin_vel_z_penalty + mimic_body_orientation_reward + qpos_regulation + qvel_regulation + contact_force_penalty + \
         torque_regulation + torque_diff_regulation + body_vel_reward + qacc_regulation + foot_contact_reward + \
         contact_force_diff_regulation + double_support_force_diff_regulation + force_thres_penalty + force_diff_thres_penalty + force_ref_reward
 
