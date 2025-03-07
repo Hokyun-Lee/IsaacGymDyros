@@ -1099,9 +1099,12 @@ class ContinuousA2CBase(A2CBase):
         reward_names
     ):
         if self.init_wandb is False:
-            os.environ['WANDB_API_KEY'] = None
-            assert(os.environ['WANDB_API_KEY'] is None)
-            wandb.init(project=self.config['name'], tensorboard = False)
+            os.environ['WANDB_API_KEY'] = "1f8271a896a0ea1767969d081a30539e115fc2de"
+            assert(os.environ['WANDB_API_KEY'] is not None)
+            # wandb.init(project=self.config['name'], tensorboard = False)
+            current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+            run_name = f"{current_time}_{self.config['run_name']}"
+            wandb.init(project=self.config['name'], name=run_name, tensorboard = False)
             if(self.config['name']=='DyrosTocabiWalk'):
                 wandb.save(os.path.join(os.getcwd(), 'cfg/task/DyrosTocabiWalk.yaml'), policy="now")
                 wandb.save(os.path.join(os.getcwd(), 'cfg/train/DyrosTocabiWalkPPO.yaml'), policy="now")
@@ -1118,6 +1121,10 @@ class ContinuousA2CBase(A2CBase):
                 wandb.save(os.path.join(os.getcwd(), 'cfg/task/DyrosDynamicWalk.yaml'), policy="now")
                 wandb.save(os.path.join(os.getcwd(), 'cfg/train/DyrosDynamicWalkPPO.yaml'), policy="now")
                 wandb.save(os.path.join(os.getcwd(), 'tasks/dyros_dynamic_walk.py'), policy="now")
+            if(self.config['name']=='DyrosCadenceWalk'):
+                wandb.save(os.path.join(os.getcwd(), 'cfg/task/DyrosCadenceWalk.yaml'), policy="now")
+                wandb.save(os.path.join(os.getcwd(), 'cfg/train/DyrosCadenceWalkPPO.yaml'), policy="now")
+                wandb.save(os.path.join(os.getcwd(), 'tasks/dyros_cadence_walk.py'), policy="now")
             wandb.save(os.path.join(os.getcwd(), '../assets/mjcf/dyros_tocabi/xml/dyros_tocabi.xml'), policy="now")
             wandb.save(os.path.join(os.getcwd(), 'tasks/base/vec_task.py'), policy="now")
             self.init_wandb = True

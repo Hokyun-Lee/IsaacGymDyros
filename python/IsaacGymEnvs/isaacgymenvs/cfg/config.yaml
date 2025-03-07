@@ -4,6 +4,8 @@ task_name: ${task.name}
 # experiment name. defaults to name of training config
 experiment: ''
 
+run_name: ''
+
 # if set to positive integer, overrides the default number of environments
 num_envs: ''
 

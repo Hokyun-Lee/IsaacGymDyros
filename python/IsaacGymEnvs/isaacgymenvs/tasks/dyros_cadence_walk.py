@@ -18,8 +18,7 @@ from .base.vec_task import VecTask
 from isaacgymenvs.cfg.terrain.terrain_cfg import TerrainCfg
 from isaacgymenvs.utils.terrain import Terrain
 
-
-class DyrosDynamicWalk(VecTask):
+class DyrosCadenceWalk(VecTask):
 
     def __init__(self, cfg, sim_device, graphics_device_id, headless):
         self.cfg = cfg
@@ -127,7 +126,7 @@ class DyrosDynamicWalk(VecTask):
         self.qpos_pre = torch.zeros_like(self.dof_pos)
         #for random target velocity
         vel_mag = torch.rand(self.num_envs,1,device=self.device, dtype=torch.float, requires_grad=False)*0.8
-        vel_theta = torch.rand(self.num_envs,1,device=self.device, dtype=torch.float, requires_grad=False)*0.0
+        vel_theta = torch.rand(self.num_envs,1,device=self.device, dtype=torch.float, requires_grad=False)*2*3.14159265358979
         x_vel_target = vel_mag[:] * torch.cos(vel_theta[:])
         y_vel_target = vel_mag[:] * torch.sin(vel_theta[:])
         self.target_vel =  torch.cat([x_vel_target,y_vel_target],dim=1)
@@ -136,8 +135,8 @@ class DyrosDynamicWalk(VecTask):
         #make motor scale constant
         self.motor_constant_scale = torch.rand(self.num_envs, 12, device=self.device, dtype=torch.float,requires_grad = False)*0.4+0.8
         #for normalizing observation
-        obs_mean_non_torch = np.genfromtxt('../assets/Data/obs_mean_fixed.txt',encoding='ascii')
-        obs_var_non_torch = np.genfromtxt('../assets/Data/obs_variance_fixed.txt',encoding='ascii')
+        obs_mean_non_torch = np.genfromtxt('../assets/Data/obs_mean_fixed_cadence.txt',encoding='ascii')
+        obs_var_non_torch = np.genfromtxt('../assets/Data/obs_variance_fixed_cadence.txt',encoding='ascii')
         self.obs_mean = torch.tensor(obs_mean_non_torch,device=self.device,dtype=torch.float)
         self.obs_var = torch.tensor(obs_var_non_torch,device=self.device, dtype=torch.float)
         #initailize late update values
@@ -454,10 +453,17 @@ class DyrosDynamicWalk(VecTask):
         self.perturbation_count[ids] = 0
 
     def pre_physics_step(self, actions):   
+        # local_time = self.time % self.mocap_cycle_period
+        # local_time_plus_init = (local_time + self.init_mocap_data_idx*self.mocap_cycle_dt) % self.mocap_cycle_period
+        # self.mocap_data_idx = (self.init_mocap_data_idx + (local_time / self.mocap_cycle_dt).type(torch.long)) % self.mocap_data_num
+        # next_idx = self.mocap_data_idx + 1
+
+        playback_speed = 1.8
         local_time = self.time % self.mocap_cycle_period
-        local_time_plus_init = (local_time + self.init_mocap_data_idx*self.mocap_cycle_dt) % self.mocap_cycle_period
-        self.mocap_data_idx = (self.init_mocap_data_idx + (local_time / self.mocap_cycle_dt).type(torch.long)) % self.mocap_data_num
-        next_idx = self.mocap_data_idx + 1 
+        scaled_time = local_time * playback_speed
+        local_time_plus_init = (scaled_time + self.init_mocap_data_idx * self.mocap_cycle_dt) % self.mocap_cycle_period
+        self.mocap_data_idx = (self.init_mocap_data_idx + (scaled_time / self.mocap_cycle_dt).type(torch.long)) % self.mocap_data_num
+        next_idx = self.mocap_data_idx + 1
 
         mocap_data_idx_list = self.mocap_data_idx.squeeze(dim=-1)
         next_idx_list = next_idx.squeeze(dim=-1)
@@ -493,7 +499,8 @@ class DyrosDynamicWalk(VecTask):
         #                                   self.start_target_vel[:,1] + (self.final_target_vel[:,1]-self.start_target_vel[:,1]) * self.cur_vel_change_duration / self.vel_change_duration, \
         #                                   self.target_vel[:,1])
         
-        if (self.perturb and (torch.mean(self.epi_len_log[:]) > self.max_episode_length - 8/self.dt_policy) and (torch.mean(self.contact_reward_mean[:]) > 0.165)):
+        # if (self.perturb and (torch.mean(self.epi_len_log[:]) > self.max_episode_length - 8/self.dt_policy) and (torch.mean(self.contact_reward_mean[:]) > 0.165)):
+        if (self.perturb and (torch.mean(self.epi_len_log[:]) > self.max_episode_length - 8/self.dt_policy) and (torch.mean(self.contact_reward_mean[:]) > 0.140)):
             self.perturb_start[:, 0] = True
         # self.perturb_start[:, 0] = True
         if (self.perturb_start[0, 0] == True):
@@ -509,10 +516,10 @@ class DyrosDynamicWalk(VecTask):
             self.gym.apply_rigid_body_force_tensors(self.sim, gymtorch.unwrap_tensor(forces), gymtorch.unwrap_tensor(torques), gymapi.ENV_SPACE)          
 
         for _ in range(self.skipframe):
-            mocap_torque = self.Kp*(self.target_data_qpos[:,:] - self.qpos_noise[:,:]) + self.Kv*(-self.dof_vel[:,:])
+            # mocap_torque = self.Kp*(self.target_data_qpos[:,:] - self.qpos_noise[:,:]) + self.Kv*(-self.dof_vel[:,:])
             upper_torque = self.Kp[12:]*(self.target_data_qpos[:,12:] - self.dof_pos[:,12:]) + self.Kv[12:]*(-self.dof_vel[:,12:])
-            total_torque = torch.cat([self.action_torque,upper_torque], dim=1)
-            stop_torque = self.Kp*(self.initial_dof_pos[:,:] - self.dof_pos[:,:]) + self.Kv*(-self.dof_vel[:,:])
+            # total_torque = torch.cat([self.action_torque,upper_torque], dim=1)
+            # stop_torque = self.Kp*(self.initial_dof_pos[:,:] - self.dof_pos[:,:]) + self.Kv*(-self.dof_vel[:,:])
             
             #action_log -> tensor(num_envs, time(current~past 9), dofs(33))
             self.action_log[:,0:-1,:] = self.action_log[:,1:,:] 
@@ -629,7 +636,7 @@ class DyrosDynamicWalk(VecTask):
 
         # reset target_vel & initial mocap_data (starting foot)
         vel_mag = torch.rand(len(env_ids),1,device=self.device, dtype=torch.float, requires_grad=False) * 0.8
-        vel_theta = torch.rand(len(env_ids),1,device=self.device, dtype=torch.float, requires_grad=False)*0.0
+        vel_theta = torch.rand(len(env_ids),1,device=self.device, dtype=torch.float, requires_grad=False)*2*3.14159265358979
         x_vel_target = vel_mag[:] * torch.cos(vel_theta[:])
         y_vel_target = vel_mag[:] * torch.sin(vel_theta[:])
         self.target_vel[env_ids] =  torch.cat([x_vel_target,y_vel_target],dim=1)
@@ -771,6 +778,23 @@ class DyrosDynamicWalk(VecTask):
         sin_phase = torch.sin(2*pi*phase) 
         cos_phase = torch.cos(2*pi*phase)
         vel_noise = torch.rand(self.num_envs, 6, device=self.device, dtype=torch.float)*0.05-0.025
+
+        lfoot_force = self.contact_forces[:,self.left_foot_idx,0:3]
+        rfoot_force = self.contact_forces[:,self.right_foot_idx,0:3] 
+        left_foot_contact = (lfoot_force[:,2].unsqueeze(-1) > 1.)
+        right_foot_contact = (rfoot_force[:,2].unsqueeze(-1) > 1.)
+
+        # obs = torch.cat((fixed_angle_x.unsqueeze(-1), fixed_angle_y.unsqueeze(-1), fixed_angle_z.unsqueeze(-1), 
+        #         self.qpos_noise[:,0:12]+self.qpos_bias, 
+        #         self.qvel_noise[:,0:12],
+        #         sin_phase.view(-1,1),
+        #         cos_phase.view(-1,1),
+        #         self.target_vel[:,0].unsqueeze(-1),
+        #         self.target_vel[:,1].unsqueeze(-1),
+        #         self.root_states[:,7:]+vel_noise,
+        #         left_foot_contact,
+        #         right_foot_contact),dim=-1)
+        
         obs = torch.cat((fixed_angle_x.unsqueeze(-1), fixed_angle_y.unsqueeze(-1), fixed_angle_z.unsqueeze(-1), 
                 self.qpos_noise[:,0:12]+self.qpos_bias, 
                 self.qvel_noise[:,0:12],
@@ -890,7 +914,8 @@ def compute_humanoid_walk_reward(
     RSSP_sync = RSSP & right_foot_contact & ~left_foot_contact
     LSSP_sync = LSSP & ~right_foot_contact & left_foot_contact
     foot_contact_reward = torch.zeros_like(mimic_body_orientation_reward, dtype=torch.float)
-    foot_contact_feeder = 0.2*torch.ones_like(foot_contact_reward, dtype=torch.float)
+    # foot_contact_feeder = 0.2*torch.ones_like(foot_contact_reward, dtype=torch.float)
+    foot_contact_feeder = 0.25*torch.ones_like(foot_contact_reward, dtype=torch.float)
     foot_contact_reward = torch.where(DSP_sync.squeeze(-1), foot_contact_feeder, foot_contact_reward)
     foot_contact_reward = torch.where(RSSP_sync.squeeze(-1), foot_contact_feeder, foot_contact_reward)
     foot_contact_reward = torch.where(LSSP_sync.squeeze(-1), foot_contact_feeder, foot_contact_reward)
@@ -904,7 +929,9 @@ def compute_humanoid_walk_reward(
     thres = left_foot_thres | right_foot_thres
     force_thres_penalty = torch.where(thres.squeeze(-1), -0.2*ones[:], zeros[:])
 
-    contact_force_penalty_thres = 0.1*torch.exp(-0.007*(torch.norm(torch.clamp(lfoot_force[:,2].unsqueeze(-1) - 1.4*9.81*total_mass, min=0.0), dim=1) \
+    # contact_force_penalty_thres = 0.1*torch.exp(-0.007*(torch.norm(torch.clamp(lfoot_force[:,2].unsqueeze(-1) - 1.4*9.81*total_mass, min=0.0), dim=1) \
+    #                                                         + torch.norm(torch.clamp(rfoot_force[:,2].unsqueeze(-1) - 1.4*9.81*total_mass, min=0.0), dim=1)))
+    contact_force_penalty_thres = 0.1*torch.exp(-0.02*(torch.norm(torch.clamp(lfoot_force[:,2].unsqueeze(-1) - 1.4*9.81*total_mass, min=0.0), dim=1) \
                                                             + torch.norm(torch.clamp(rfoot_force[:,2].unsqueeze(-1) - 1.4*9.81*total_mass, min=0.0), dim=1)))
     contact_force_penalty = torch.where(thres.squeeze(-1), contact_force_penalty_thres[:], 0.1*ones[:])
         

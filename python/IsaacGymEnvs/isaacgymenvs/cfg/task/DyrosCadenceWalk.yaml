@@ -1,6 +1,7 @@
-name: DyrosDynamicWalk
+name: DyrosCadenceWalk
 
 physics_engine: ${..physics_engine}
+
 
 # if given, will override the device setting in gym.
 env: 
@@ -13,6 +14,7 @@ env:
   clipActions: 1.0
 
   NumSingleStepObs: 37
+  # NumSingleStepObs: 39
   NumAction: 13
 
   perturbation: True #False for default
